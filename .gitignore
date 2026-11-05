@@ -1,0 +1,34 @@
+# Secrets and credentials
+.env
+client_secrets.json
+token.json
+*.pem
+*.key
+
+# Local environment and caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+.streamlit/
+cache/
+*.log
+
+# Everything produced for your channel (videos, scripts, narration, media)
+output/
+
+# Your channel's state: what was made, published, and which Pixabay material was used
+history.json
+lofi_usage.json
+
+# Downloaded or licensed media (music beds, lofi tracks, rain); keep the folders, not the files
+assets/music/*
+assets/lofi_music/*
+assets/ambience/*
+!assets/*/.keep
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

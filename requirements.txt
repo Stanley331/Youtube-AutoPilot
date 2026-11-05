@@ -1,0 +1,13 @@
+anthropic>=1.0
+requests>=2.31
+kokoro-onnx>=0.6.1
+soundfile>=0.13.0
+pyyaml>=6.0
+python-dotenv>=1.0
+pydantic>=2.0
+pillow>=10.0
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2
+streamlit>=1.30
+faster-whisper>=1.2       # word timing for voices that do not report it (Gemini TTS, system voice)

@@ -1,0 +1,112 @@
+{
+  "format": "long",
+  "content_type": "story",
+  "title": "The Lighthouse That Kept a Promise (Dry Run)",
+  "alternative_titles": [
+    "One Lamp Against the Winter Sea",
+    "The Keeper Who Would Not Leave",
+    "Why the Harbor Never Went Dark"
+  ],
+  "thumbnail_text": "THE LAST LAMP",
+  "description": "An original story in three chapters about an old lighthouse keeper, a storm that cut the harbor off, and the promise that kept one lamp burning. This is a fictional sample used by the dry run.\n\nNo real place or person is depicted.",
+  "tags": ["short story", "lighthouse story", "audio story", "fiction", "storytelling", "narrated story", "winter story", "sea story"],
+  "main_character": "Tomas, a grey-bearded lighthouse keeper in a heavy navy coat and a knitted cap",
+  "chapters": [
+    {"title": "The Keeper and the Promise", "first_scene": 0},
+    {"title": "The Night the Cable Snapped", "first_scene": 3},
+    {"title": "What the Harbor Remembered", "first_scene": 6}
+  ],
+  "scenes": [
+    {
+      "narration": "For forty winters, one lamp on the cliff told the fishing boats where the rocks began. Tomas lit it every dusk, and he had promised his wife he always would. This is the story of the night that promise was tested.",
+      "visual_query": "lighthouse cliff dusk",
+      "visual_description": "A stone lighthouse on a windswept cliff at dusk, its lamp just lit, grey sea below and a small harbor in the distance.",
+      "setting": "rocky cliff above a cold harbor at dusk",
+      "visual_subject": "a lighthouse",
+      "action": "its lamp flickering on",
+      "visual_objects": ["lighthouse", "sea", "harbor lights"],
+      "on_screen_text": "FORTY WINTERS"
+    },
+    {
+      "narration": "Tomas was seventy-one. His knees complained on the spiral stairs, and the town council had sent two letters about automation. He kept both letters in a drawer, unanswered, next to a photograph of Ana on the harbor wall.",
+      "visual_query": "old man spiral staircase lantern",
+      "visual_description": "Tomas, grey-bearded in a navy coat, climbing a worn iron spiral staircase inside the lighthouse with a lantern in one hand.",
+      "setting": "inside the lighthouse tower",
+      "visual_subject": "Tomas, an old lighthouse keeper",
+      "action": "climbing the stairs slowly",
+      "visual_objects": ["spiral staircase", "lantern", "old photograph"],
+      "on_screen_text": ""
+    },
+    {
+      "narration": "Ana had made him promise one thing before she died: never let the harbor go dark while a boat is out. It had been an easy promise for thirty years. Then the forecast for the second week of December came in.",
+      "visual_query": "stormy sea forecast winter",
+      "visual_description": "A crackling radio on a wooden table, a barometer needle dropping, and through the window a darkening winter sky over the sea.",
+      "setting": "the keeper's kitchen in the lighthouse",
+      "visual_subject": "a radio and a barometer",
+      "action": "the barometer needle falling",
+      "visual_objects": ["radio", "barometer", "window"],
+      "on_screen_text": "DECEMBER"
+    },
+    {
+      "narration": "The storm arrived two hours early. By nine, the power cable from the mainland had snapped, and every house in the town went dark at once. On the cliff, the great lamp went dark with them.",
+      "visual_query": "storm waves town blackout",
+      "visual_description": "Huge waves breaking over a harbor wall at night while the row of houses behind it loses its lights one by one.",
+      "setting": "the harbor during a night storm",
+      "visual_subject": "waves and dark houses",
+      "action": "lights going out",
+      "visual_objects": ["harbor wall", "waves", "dark windows"],
+      "on_screen_text": "NINE O'CLOCK"
+    },
+    {
+      "narration": "Tomas knew that the Marta, the smallest boat in the fleet, had left at dawn with two brothers aboard. Without the lamp they would be steering by memory toward rocks they could not see.",
+      "visual_query": "small fishing boat storm night",
+      "visual_description": "A small wooden fishing boat tossed on black waves, two figures in oilskins holding on, no light anywhere on the horizon.",
+      "setting": "the open sea in a storm",
+      "visual_subject": "two fishermen",
+      "action": "clinging to the wheel",
+      "visual_objects": ["fishing boat", "oilskins", "black waves"],
+      "on_screen_text": "TWO BROTHERS"
+    },
+    {
+      "narration": "In the storeroom he found what the council had wanted gone for years: the old oil lamp, the brass reflector, and three tins of paraffin. His hands shook as he carried them up the one hundred and twelve steps.",
+      "visual_query": "old brass oil lamp storeroom",
+      "visual_description": "Tomas in the dim storeroom lifting a tarnished brass oil lamp from a shelf, paraffin tins at his feet, rain hammering a small window.",
+      "setting": "the lighthouse storeroom",
+      "visual_subject": "Tomas",
+      "action": "lifting an old brass lamp",
+      "visual_objects": ["brass oil lamp", "paraffin tins", "shelf"],
+      "on_screen_text": "112 STEPS"
+    },
+    {
+      "narration": "At the top, he set the reflector, trimmed the wick, and struck a match that the wind tried three times to take from him. The fourth match held. A small yellow flame grew behind the brass, and the sea in front of the rocks turned gold.",
+      "visual_query": "oil lamp flame lighthouse top",
+      "visual_description": "Close on weathered hands striking a match beside an old brass oil lamp at the top of the lighthouse, the flame catching and brightening.",
+      "setting": "the lamp room at the top of the lighthouse",
+      "visual_subject": "Tomas's hands and the lamp",
+      "action": "the wick catching",
+      "visual_objects": ["match", "brass reflector", "flame"],
+      "on_screen_text": "THE FOURTH MATCH"
+    },
+    {
+      "narration": "The Marta came in at a quarter past midnight, scraping the harbor wall but whole. The brothers said they had seen a light that looked nothing like the electric one, lower and warmer, and they had trusted it.",
+      "visual_query": "fishing boat harbor night arrival",
+      "visual_description": "The small fishing boat sliding into the dark harbor at night, the two brothers waving toward a warm yellow glow on the cliff above.",
+      "setting": "the harbor after the storm",
+      "visual_subject": "two fishermen arriving",
+      "action": "waving up at the cliff",
+      "visual_objects": ["fishing boat", "harbor wall", "warm light"],
+      "on_screen_text": "QUARTER PAST MIDNIGHT"
+    },
+    {
+      "narration": "The council never sent a third letter. The old lamp stays in the lamp room now, polished, beside the electric one, and every keeper since has learned to light it. Tomas kept his promise, and the harbor kept his. If you liked this story, the next one is waiting.",
+      "visual_query": "lighthouse sunrise calm sea",
+      "visual_description": "The lighthouse at sunrise on a calm morning, both the electric lamp and the small brass oil lamp visible in the lamp room window.",
+      "setting": "the cliff at sunrise",
+      "visual_subject": "the lighthouse",
+      "action": "standing in calm light",
+      "visual_objects": ["lighthouse", "sunrise", "brass lamp"],
+      "on_screen_text": ""
+    }
+  ],
+  "claims_to_verify": []
+}

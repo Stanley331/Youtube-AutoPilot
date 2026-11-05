@@ -1,0 +1,167 @@
+# Channel identity. The configured LLM uses this when picking topics and writing scripts.
+channel:
+  name: "Quick Tales & Curious Facts"
+  niche: "original short stories and surprising, well-researched facts"
+  audience: "curious viewers who enjoy a complete story or a memorable fact in under a minute"
+  tone: "warm, cinematic, curious, concise, and honest; no fabricated facts or empty clickbait"
+  language: "English"
+
+# The settings below are the base configuration, tuned for Shorts. `formats:` further down
+# overrides what differs for long videos and lofi music videos.
+video:
+  target_minutes: 0.8        # about 45 to 55 seconds: a concise vertical Short
+  words_per_minute: 140      # slightly slower for readability with captions
+  resolution: [1080, 1920]   # vertical 9:16
+  fps: 30
+  seconds_per_cut: 4.0       # applies to stock video clips
+  seconds_per_still: 3.0     # stills (photos, AI panels) get a new camera move about this often
+  max_scenes: 6              # enforced: keeps videos Shorts-length and focused
+
+voice:
+  engine: "kokoro"            # "kokoro" (free, local), "gemini" (free tier, needs GEMINI_API_KEY),
+                              # "elevenlabs" (paid), or "local" (system voice for testing)
+  rotate: true                # each new video gets the least recently used narrator from its pool below;
+                              # false = always the fixed voice for the engine (kokoro_voice / gemini_voice)
+  kokoro_voice: "af_heart"    # fixed narrator when rotate is false; `python run.py voices` lists them
+  kokoro_speed: 1.0
+  kokoro_language: "en-us"
+  kokoro_model_dir: "cache/tts/kokoro"
+  gemini_voice: "Sulafat"
+  gemini_tts_model: "gemini-3.8-flash-tts"
+  gemini_tts_fallback_model: "gemini-3.8-flash-lite-tts"
+  gemini_style: "warm, unhurried narrator for a short film"   # delivery hint sent with each passage
+  pools:                      # narrators per content type; story and fact can overlap
+    kokoro:
+      story: [af_heart, af_bella, bf_emma, bm_fable, bm_george, am_michael, af_nicole, am_fenrir]
+      fact:  [af_nicole, am_puck, bf_isabella, af_kore, af_sarah, am_michael, bm_george, af_aoede]
+    gemini:
+      story: [Sulafat, Aoede, Vindemiatrix, Enceladus, Gacrux, Achernar, Algieba, Despina]
+      fact:  [Charon, Rasalgethi, Sadaltager, Kore, Iapetus, Schedar, Zephyr, Orus]
+  elevenlabs_model: "eleven_multilingual_v2"
+  stability: 0.5
+  similarity_boost: 0.75
+  say_voice: "Samantha"      # macOS local voice
+  windows_voice: ""          # Windows local voice, e.g. "Microsoft Zira Desktop"; empty = default
+
+visuals:
+  source: "pixabay"          # "pixabay" = stock footage (needs PIXABAY_API_KEY),
+                             # "diffusion" = AI panels rendered on your GPU (see diffusion: below),
+                             # "illustration" = locally drawn motion-comic panels (no key),
+                             # "placeholder" = color slides for testing
+  cache_dir: "cache/clips"
+  search_terms_per_scene: 3  # extra stock-search phrasings the LLM writes per scene (1 = visual_query only)
+  include_photos: true       # also search Pixabay photos; stills get a slow zoom in the video
+  rank_with_llm: true        # score candidate frames against the scene with a vision model (Gemini Flash free tier)
+  rank_batch_scenes: 3       # scenes per ranking request; free tiers count requests per day
+  diffusion_fallback_score: 4  # with pixabay: scenes whose best stock match scores below this get an
+                               # AI panel instead (0 = never). Needs requirements-diffusion.txt installed.
+  stills_per_scene: 3        # when the chosen media is a still, cut between up to this many of the
+                             # scene's stills (the chosen one first, then AI panels or well-scored stock)
+  extra_still_min_score: 6   # a stock still joins those cuts only if the vision ranker scored it this high
+
+# Camera moves for stills: push in, pull back, pan; a different one each shot.
+motion:
+  strength: 0.18             # how far a move travels over its shot (fraction of the frame)
+  base_zoom: 1.12            # how far in pans and pull-backs sit (1.0 = whole picture)
+  min_shot_seconds: 1.6      # never cut faster than this
+
+# Local AI illustrations (visuals.source: diffusion, or the fallback above). Free, runs on your GPU.
+diffusion:
+  model: "Lykon/dreamshaper-8"   # any Stable Diffusion 1.5 checkpoint on Hugging Face
+  fast: true                     # LCM LoRA, 8 steps: about 30-60 s per panel on a GTX 1050 Ti
+  steps: 8
+  guidance: 1.5
+  width: 512                     # generation size (upscaled to the video resolution)
+  height: 896
+  candidates: 1                  # panels per scene per fetch; Regenerate renders another take
+  device: "auto"                 # auto | cuda | cpu
+  style: "storybook illustration, flat vector art, bold clean shapes, soft cinematic lighting, rich colors, highly detailed, vertical composition"
+  styles:                        # optional: one is chosen per video so a batch does not all look alike
+    - "storybook illustration, flat vector art, bold clean shapes, soft cinematic lighting, rich colors, highly detailed, vertical composition"
+    - "painterly digital illustration, visible brush strokes, warm palette, dramatic light, highly detailed, vertical composition"
+    - "clean ink and watercolor illustration, soft washes, gentle colors, editorial style, highly detailed, vertical composition"
+    - "cinematic concept art, moody atmosphere, volumetric light, muted palette, highly detailed, vertical composition"
+
+captions:
+  enabled: true
+  font: "Arial"
+  size: 84
+  words_per_line: 4          # 3-4 words at a time for readable pacing
+  hold_seconds: 0.6          # keep a caption up through a pause this long instead of blinking off
+  align: true                # for voices without word timing (gemini, local): time words with a local Whisper pass
+  align_model: "small.en"    # tiny.en / base.en / small.en / medium.en; downloaded once into cache/asr
+  align_device: "cpu"        # cpu takes a few seconds per scene; "cuda" needs the CUDA runtime for ctranslate2
+
+music:
+  enabled: true
+  dir: "assets/music"        # drop royalty-free mp3 files here; one is picked at random
+  volume: 0.08               # subtle background, voice stays clear
+  # Generated music for lofi videos (run.py lofi). Both engines are free for commercial use.
+  engine: "pixabay"          # pixabay = tracks you downloaded from pixabay.com/music into library_dir (instant);
+                             # acestep = ACE-Step 1.5 (MIT) through its local API server, see README;
+                             # procedural = composed and synthesized here (no model, no download),
+                             # also what every ACE-Step track falls back to when the server is not running
+  library_dir: "assets/lofi_music"   # the Pixabay music library; lofi_usage.json tracks what each video used
+  track_minutes: 2.5         # each track; an hour-long video gets about 24 of them
+  acestep_url: "http://127.0.0.1:8001"
+  acestep_steps: 8
+  acestep_prompt: "lofi hip hop, chill study beat, warm electric piano chords, soft dusty drums, vinyl crackle, mellow, relaxed, instrumental, no vocals"
+  fallback_to_procedural: true   # when the ACE-Step server is not running or a track fails
+
+# Lofi music videos: one illustrated scene, gently animated, over the generated tracks.
+lofi:
+  minutes: 60
+  picture: "pixabay"         # pixabay = an animated loop from Pixabay's video API (instant, seamless);
+                             # diffusion = AI panel on your GPU; illustration = drawn panel; placeholder
+  ambience_source: "library" # library = a rain file from ambience_dir (pixabay.com/sound-effects);
+                             # procedural = synthesized rain. Only when the scene is rainy (rain: below).
+  ambience_dir: "assets/ambience"
+  clip_min_seconds: 5        # Pixabay loops shorter or longer than this window are skipped
+  clip_max_seconds: 120
+  loop_seconds: 24           # the animated loop; longer hides the repeat better, renders slower once
+  rain: "auto"               # auto = when the scene is rainy; always; never
+  ambience_volume: 0.10      # rain under the music
+  crossfade_seconds: 3
+  grain: true
+  flicker: true
+  style: "lofi anime illustration, cozy, warm lamp light, soft muted colors, gentle shading, highly detailed, wide cinematic composition"
+  title_suffix: "lofi hip hop beats to study and relax to"
+
+# Shorts cut from a long video (run.py cut <slug>): consecutive scenes re-rendered vertically.
+cuts:
+  count: 2
+  min_seconds: 25
+  max_seconds: 58
+
+thumbnail:
+  font_path: ""              # leave empty to auto-detect a bold system font (Arial on Windows and macOS)
+
+youtube:
+  privacy: "private"         # private, unlisted, or public. Review on YouTube first, then flip to public.
+  category_id: "1"           # 1 = Film & Animation
+  made_for_kids: false
+  contains_synthetic_media: true   # YouTube's altered/synthetic content disclosure (AI voice, AI panels)
+  disclosure: "Narration and illustrations in this video were produced with AI tools and reviewed by a person."
+  schedule:                  # `run.py publish <slug> --next-slot` and `run.py queue --publish` use these
+    times: ["18:00"]         # local times; add more for several videos a day
+    timezone: "Asia/Kolkata"
+    lead_minutes: 60         # never schedule closer than this to now
+
+# Video formats. Each entry overrides the base settings above for that kind of video;
+# `run.py make --length long`, `run.py lofi`, and the UI's format picker choose one.
+formats:
+  short:
+    video: {resolution: [1080, 1920], target_minutes: 0.8, max_scenes: 6}
+    captions: {size: 84, words_per_line: 4}
+  long:
+    video: {resolution: [1920, 1080], target_minutes: 10, chapters: 6, scenes_per_chapter: 6}
+    captions: {size: 54, words_per_line: 5}
+    visuals: {rank_batch_scenes: 6, rank_max_requests: 6, candidates_per_scene: 5}   # ~40 scenes on a free vision tier
+    diffusion: {width: 896, height: 512}
+  lofi:
+    video: {resolution: [1920, 1080], fps: 24}
+    diffusion: {width: 896, height: 512}
+    youtube: {category_id: "10", disclosure: "The music and artwork in this video were generated with software on the creator's computer and reviewed by a person."}
+
+# LLM provider: gemini, anthropic, or nemotron (set via .env: LLM_PROVIDER)
+# Scripts are generated by the LLM; scenes and narration drive the visuals.

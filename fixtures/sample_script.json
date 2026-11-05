@@ -1,0 +1,46 @@
+{
+  "content_type": "story",
+  "title": "The Moth That Led Mira Home (Dry Run)",
+  "alternative_titles": [
+    "A Lantern Beneath the Bridge",
+    "The Little Light on the Hill",
+    "One Moth, Two Lonely People"
+  ],
+  "thumbnail_text": "FOLLOW THE LIGHT",
+  "description": "A tiny silver-winged moth leads Mira through a storm to someone who needs a friend. This is an original fictional story sample.",
+  "tags": ["short story", "animated story", "micro fiction", "heartwarming story", "motion comic"],
+  "main_character": "Mira, a young traveler with short dark hair, a mustard raincoat, and a red scarf",
+  "scenes": [
+    {
+      "narration": "At midnight, Mira spotted a little brass lantern beneath the bridge. A silver-winged moth fluttered inside it, tapping the glass like it was trying to ask for help.",
+      "visual_query": "Mira lantern moth bridge",
+      "visual_description": "Mira in a mustard raincoat discovers a glowing brass lantern beneath a stone bridge in the rain. A silver-winged moth taps at the glass.",
+      "setting": "rainy stone bridge at night",
+      "visual_subject": "Mira, a young traveler",
+      "action": "kneeling to lift the lantern",
+      "visual_objects": ["brass lantern", "silver moth", "stone bridge"],
+      "on_screen_text": "A light under the bridge"
+    },
+    {
+      "narration": "Mira opened the lantern. The moth circled her once, then flew toward one dark window on the hill. She followed its tiny light through the rain.",
+      "visual_query": "Mira moth hill house",
+      "visual_description": "Mira follows the glowing moth along a winding hill path in the rain, toward a small house with one lit window.",
+      "setting": "rainy path climbing a hill at night",
+      "visual_subject": "Mira following a silver moth",
+      "action": "walking toward a distant house",
+      "visual_objects": ["silver moth", "hilltop house", "rain clouds"],
+      "on_screen_text": "Follow the tiny light"
+    },
+    {
+      "narration": "An old woman opened the door, smiling. The moth had escaped from her late husband's workshop. He built it to guide lost travelers home. Mira left the lantern by the door. One small light had brought two lonely people together. Follow for more little stories like this.",
+      "visual_query": "Mira woman moth doorway",
+      "visual_description": "At a warm cottage doorway, Mira and a kind older woman watch the silver moth glow between them; a tiny workshop window shines behind the house.",
+      "setting": "warm cottage doorway on a rainy night",
+      "visual_subject": "Mira and an older woman",
+      "action": "sharing a relieved smile beside the lantern",
+      "visual_objects": ["silver moth", "brass lantern", "cottage door"],
+      "on_screen_text": "One light brought them together"
+    }
+  ],
+  "claims_to_verify": []
+}

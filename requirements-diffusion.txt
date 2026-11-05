@@ -1,0 +1,11 @@
+# Optional: local AI illustrations (visuals.source: diffusion). Install with:
+#   .venv\Scripts\pip install -r requirements-diffusion.txt --extra-index-url https://download.pytorch.org/whl/cu126
+# torch 2.14 is the last release with CUDA 12.6 wheels, the last ones that support
+# GTX 10-series (Pascal) cards. Newer cards can use a newer torch from the default index.
+torch==2.14.1
+torchvision==0.29.1
+diffusers>=0.36
+transformers>=4.50
+accelerate>=1.0
+safetensors>=0.5
+peft>=0.14
