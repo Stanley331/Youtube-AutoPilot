@@ -98,7 +98,8 @@ music:
   volume: 0.08               # subtle background, voice stays clear
   # Generated music for lofi videos (run.py lofi). Both engines are free for commercial use.
   engine: "pixabay"          # pixabay = tracks you downloaded from pixabay.com/music into library_dir (instant);
-                             # acestep = ACE-Step 1.5 (MIT) through its local API server, see README;
+                             # kaggle = ACE-Step 1.5 on Kaggle's free T4, one job per tracklist (needs KAGGLE_API_TOKEN);
+                             # acestep = ACE-Step 1.5 (MIT) through its local API server on this PC's GPU, see README;
                              # procedural = composed and synthesized here (no model, no download),
                              # also what every ACE-Step track falls back to when the server is not running
   library_dir: "assets/lofi_music"   # the Pixabay music library; lofi_usage.json tracks what each video used
@@ -106,7 +107,9 @@ music:
   acestep_url: "http://127.0.0.1:8001"
   acestep_steps: 8
   acestep_prompt: "lofi hip hop, chill study beat, warm electric piano chords, soft dusty drums, vinyl crackle, mellow, relaxed, instrumental, no vocals"
-  fallback_to_procedural: true   # when the ACE-Step server is not running or a track fails
+  fallback_to_procedural: true   # when the ACE-Step server is not running, a track fails, or Kaggle fails
+  kaggle_kernel_slug: "yt-autopilot-lofi-music"   # the private notebook reused for music jobs
+  kaggle_repo: "git+https://github.com/ACE-Step/ACE-Step-1.5.git"
 
 # Lofi music videos: one illustrated scene, gently animated, over the generated tracks.
 lofi:
@@ -126,6 +129,33 @@ lofi:
   flicker: true
   style: "lofi anime illustration, cozy, warm lamp light, soft muted colors, gentle shading, highly detailed, wide cinematic composition"
   title_suffix: "lofi hip hop beats to study and relax to"
+
+# Doodle explainers (run.py make --length doodle): a hand-drawn cartoon for every sentence,
+# one recurring character, handwritten title cards. Scripts are written by Gemini (see .env).
+doodle:
+  images: "kaggle"           # kaggle = SDXL on Kaggle's free GPUs (needs KAGGLE_API_TOKEN, see README);
+                             # diffusion = this PC's GPU (Stable Diffusion 1.5, slow); placeholder = test boxes
+  style: "simple hand-drawn doodle cartoon, thick black outlines, flat colors, minimal shading, plain white background"
+  font_path: ""              # handwriting font for cards and labels; empty = Ink Free / Segoe Print / Comic Sans
+                             # (or drop a .ttf into assets/fonts, e.g. Patrick Hand from Google Fonts, OFL)
+  labels: true               # handwritten notes on some drawings ("COOLS DOWN")
+  card_color: "#8a2b1d"      # title-card ink
+  fit_minutes: [9, 11]       # re-time the narration (at most max_speed_change) to land in this window
+  max_speed_change: 0.12
+  min_beat_seconds: 1.4      # a drawing stays up at least this long
+
+# Kaggle image jobs (doodle.images: kaggle). One private notebook is reused; each video is a new version.
+kaggle:
+  kernel_slug: "yt-autopilot-doodle-images"
+  machine_shape: "NvidiaTeslaT4"   # the free GPU (two per session); P100 is retired
+  model: "stabilityai/stable-diffusion-xl-base-1.0"   # OpenRAIL++: commercial use allowed
+  lightning: true            # SDXL-Lightning 8-step LoRA: about 3-5 s per image on a T4
+  width: 1344                # SDXL's 16:9 size; upscaled to 1080p
+  height: 768
+  ip_adapter: true           # draw the character once, then keep it recognisable in every picture
+  ip_adapter_scale: 0.45     # higher = more alike, but less freedom to pose
+  poll_seconds: 30
+  timeout_minutes: 300
 
 # Shorts cut from a long video (run.py cut <slug>): consecutive scenes re-rendered vertically.
 cuts:
@@ -158,6 +188,9 @@ formats:
     captions: {size: 54, words_per_line: 5}
     visuals: {rank_batch_scenes: 6, rank_max_requests: 6, candidates_per_scene: 5}   # ~40 scenes on a free vision tier
     diffusion: {width: 896, height: 512}
+  doodle:
+    video: {resolution: [1920, 1080], target_minutes: 10, chapters: 6, scenes_per_chapter: 5}
+    captions: {enabled: false}     # the drawings carry the video; YouTube adds its own captions
   lofi:
     video: {resolution: [1920, 1080], fps: 24}
     diffusion: {width: 896, height: 512}

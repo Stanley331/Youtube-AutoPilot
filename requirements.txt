@@ -11,3 +11,5 @@ google-auth-oauthlib>=1.2
 google-auth-httplib2>=0.2
 streamlit>=1.30
 faster-whisper>=1.2       # word timing for voices that do not report it (Gemini TTS, system voice)
+kaggle>=2.2               # doodle videos: draw the images on Kaggle's free GPUs
+six>=1.16                 # needed by the kaggle client but not declared by it

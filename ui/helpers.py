@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from pipeline import diffusion, formats, history, lofi, lofi_library, lofi_music  # noqa: E402
+from pipeline import diffusion, doodle, formats, history, kaggle_images, lofi, lofi_library, lofi_music  # noqa: E402
 from pipeline.config import load_config  # noqa: E402
 from pipeline.motion import plan_to_json  # noqa: E402
 from pipeline.ranking import LOW_MATCH_SCORE, ensure_search_terms  # noqa: E402
@@ -39,11 +39,11 @@ RUN_PY = ROOT / "run.py"
 
 __all__ = [
     "ROOT", "OUTPUT_DIR", "SOURCES", "ENGINES", "LOW_MATCH_SCORE", "cfg", "project_cfg", "describe",
-    "all_voices", "pool_for", "preview_voice", "diffusion", "lofi", "lofi_music", "formats",
+    "all_voices", "pool_for", "preview_voice", "diffusion", "lofi", "lofi_music", "formats", "doodle",
 ]
 
-KIND_LABELS = {"short": "Short", "long": "Long video", "lofi": "Lofi music"}
-KIND_ICONS = {"short": "🎬", "long": "📺", "lofi": "🎧"}
+KIND_LABELS = {"short": "Short", "long": "Long video", "doodle": "Doodle explainer", "lofi": "Lofi music"}
+KIND_ICONS = {"short": "🎬", "long": "📺", "doodle": "✏️", "lofi": "🎧"}
 
 
 class ActionError(RuntimeError):
@@ -100,17 +100,48 @@ def start_background(cmd: list[str], log_path: Path) -> None:
                "r = subprocess.run(cmd, stdout=h, stderr=subprocess.STDOUT); "
                "h.write('\\nexit %d\\n' % r.returncode); h.close()")
     flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen([PYTHON_EXE, "-c", wrapper, str(log_path), *cmd], cwd=str(ROOT),
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, creationflags=flags)
+    proc = subprocess.Popen([PYTHON_EXE, "-c", wrapper, str(log_path), *cmd], cwd=str(ROOT),
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            env=env, creationflags=flags)
+    log_path.with_suffix(".pid").write_text(str(proc.pid), encoding="utf-8")
+
+
+def _pid_alive(pid: int) -> bool:
+    """Whether a process is still running (never signals it; os.kill would end it on Windows)."""
+    if os.name == "nt":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        kernel32.CloseHandle(handle)
+        return bool(ok) and code.value == 259                      # STILL_ACTIVE
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
 
 
 def log_state(log_path: Path, stale_minutes: int = 15) -> str:
-    """none | running | done | failed, from the log's exit line and age."""
+    """none | running | done | failed, from the log's exit line, its process, and its age."""
     if not log_path.exists():
         return "none"
     text = log_path.read_text(encoding="utf-8", errors="replace")
     finished = re.search(r"^exit (\d+)\s*$", text, flags=re.MULTILINE)
     if not finished:
+        # A job whose process is gone (the studio restarted, the PC slept) failed, however fresh its log.
+        pid_file = log_path.with_suffix(".pid")
+        if pid_file.exists():
+            try:
+                if not _pid_alive(int(pid_file.read_text(encoding="utf-8").strip())):
+                    return "failed"
+            except (OSError, ValueError):
+                pass
         return "running" if time.time() - log_path.stat().st_mtime < stale_minutes * 60 else "failed"
     return "done" if finished.group(1) == "0" else "failed"
 
@@ -251,6 +282,17 @@ def progress(slug: str) -> dict:
                 state.setdefault("look_ok", True)
             if info["tracks"] or info["render"] != "none":
                 state.setdefault("music_ok", True)
+    elif fmt == "doodle":
+        audios = scene_audios(slug, len(scenes)) if scenes else []
+        info["voice"] = bool(scenes) and len(audios) == len(scenes)
+        info["durations"] = [a.duration for a in audios]
+        info["images"] = doodle.image_status(out_dir, script)
+        info["drawing"] = log_state(out_dir / "drawing.log", stale_minutes=20)
+        info["selected"] = bool(scenes) and not info["images"]["missing"]
+        info["candidates"] = info["images"]["done"] > 0
+        info["chosen"] = {}
+        backend = state.get("visuals")
+        info["visuals"] = backend if backend in doodle.BACKENDS else doodle.settings(cfg())["images"]
     else:
         audios = scene_audios(slug, len(scenes)) if scenes else []
         info["voice"] = bool(scenes) and len(audios) == len(scenes)
@@ -283,6 +325,20 @@ def status_line(p: dict) -> str:
         if p.get("scene_image"):
             return "Scene drawn; pick music and render"
         return "Planned; draw the scene next"
+    if p["format"] == "doodle":
+        if p["render"] == "running":
+            return "Rendering in the background"
+        if p["video"]:
+            return "Ready to publish"
+        if p["drawing"] == "running":
+            return f"Drawing on {p['visuals']}"
+        if p["drawing"] == "failed":
+            return "Drawing failed; open to see why"
+        if p["selected"] and p.get("voice"):
+            return "Drawings ready; render next"
+        if p["images"]["done"]:
+            return f"{p['images']['done']}/{p['images']['needed']} drawings"
+        return "Narrated; draw the pictures next" if p.get("voice") else "Script written; narrate next"
     if p["video"]:
         return "Ready to publish"
     if p.get("selected"):
@@ -341,6 +397,34 @@ def create_script(idea: str, fmt: str, length: str, visuals: str) -> str:
         raise ActionError("The script was written but its folder could not be found", out[-3000:])
     set_ui_state(slug, visuals=visuals, kind=length)
     return slug
+
+
+JOBS_DIR = OUTPUT_DIR / "_jobs"
+
+
+def start_script_job(idea: str, fmt: str, length: str, visuals: str) -> str:
+    """Write a new project's script in the background; returns the log path to follow.
+
+    A doodle or long script is an outline plus one request per chapter (several minutes,
+    more when the model is busy and retries), so the page shows the log instead of a spinner.
+    """
+    JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = JOBS_DIR / f"script_{time.strftime('%Y%m%d_%H%M%S')}_{slugify(idea, 30)}.log"
+    start_background([PYTHON_EXE, str(RUN_PY), "make", "--idea", idea, "--format", fmt, "--length", length,
+                      "--visuals", visuals, "--stop-after", "script"], log_path)
+    return str(log_path)
+
+
+def script_job(log_path: str) -> dict:
+    """state (running/done/failed), the new slug when done, elapsed seconds, and the log text."""
+    path = Path(log_path)
+    text = log_tail(path, 20000)
+    state = log_state(path, stale_minutes=10)
+    slug = _slug_from_output(text) if state == "done" else None
+    if state == "done" and not (slug and (OUTPUT_DIR / slug / "script.json").exists()):
+        state = "failed"
+    started = path.with_suffix(".pid").stat().st_mtime if path.with_suffix(".pid").exists() else path.stat().st_mtime
+    return {"state": state, "slug": slug, "elapsed": time.time() - started, "log": text}
 
 
 def narrate(slug: str, engine: str, name: str = "") -> list[float]:
@@ -452,9 +536,12 @@ def render_video(slug: str) -> Path:
     selections, custom = load_media_plan(slug)
     durations = [a.duration for a in audios]
     build_ass(audios, out_dir / "captions.ass", cfg_)
-    plan = clips_for_scenes(script["scenes"], durations, out_dir, cfg_,
-                            ui_state(slug).get("visuals") or cfg_["visuals"]["source"],
-                            script_context=script, selections=selections, custom_media=custom)
+    if doodle.is_doodle(script):   # a doodle video, or a Short cut from one: a drawing per sentence
+        plan = doodle.clip_plan(script, audios, doodle.compose_frames(out_dir, script, cfg_), cfg_)
+    else:
+        plan = clips_for_scenes(script["scenes"], durations, out_dir, cfg_,
+                                ui_state(slug).get("visuals") or cfg_["visuals"]["source"],
+                                script_context=script, selections=selections, custom_media=custom)
     write_json(out_dir / "clip_plan.json", plan_to_json(plan))
     final = assemble(out_dir, plan, audios, cfg_)
     (out_dir / "final_1x.mp4").unlink(missing_ok=True)
@@ -515,6 +602,99 @@ def voice_sample(engine: str, name: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Doodle explainers
+# ---------------------------------------------------------------------------
+
+def kaggle_ready() -> dict:
+    """Whether Kaggle drawing can start, and what to do if not (no network call)."""
+    return {"installed": kaggle_images.installed(), "configured": kaggle_images.configured(),
+            "hint": kaggle_images.credentials_hint(),
+            "ok": kaggle_images.installed() and kaggle_images.configured()}
+
+
+def doodle_start_drawing(slug: str, backend: str) -> bool:
+    """Draw every missing picture in the background (Kaggle runs take 20-60 minutes)."""
+    if backend not in doodle.BACKENDS:
+        raise ActionError(f"Unknown drawing backend '{backend}'")
+    if backend == "kaggle" and not kaggle_ready()["ok"]:
+        raise ActionError(kaggle_images.credentials_hint())
+    if backend == "diffusion":
+        release_gpu()
+    if log_state(OUTPUT_DIR / slug / "drawing.log", stale_minutes=20) == "running":
+        raise ActionError("A drawing run is already going for this video; wait for it to finish")
+    set_ui_state(slug, visuals=backend)
+    start_background([PYTHON_EXE, str(RUN_PY), "make", "--slug", slug, "--visuals", backend,
+                      "--stop-after", "media_selection"], OUTPUT_DIR / slug / "drawing.log")
+    return True
+
+
+def doodle_redo(slug: str, ids: list[str]) -> int:
+    """New takes for these beats: their drawings are deleted and their seeds change."""
+    script = read_script(slug) or {}
+    count = doodle.mark_for_redo(OUTPUT_DIR / slug, script, ids)
+    if count:
+        write_script(slug, script)
+        for stale in ("final.mp4", "final_1x.mp4"):
+            (OUTPUT_DIR / slug / stale).unlink(missing_ok=True)
+    return count
+
+
+def doodle_beats(slug: str) -> list[dict]:
+    """Every beat with what the gallery shows: id, scene, chapter, text, picture, image (or None)."""
+    script = read_script(slug) or {}
+    out_dir = OUTPUT_DIR / slug
+    chapters = sorted(((int(c.get("first_scene", 0)), c.get("title", "")) for c in script.get("chapters", []) or []))
+    rows = []
+    for i, scene in enumerate(script.get("scenes", [])):
+        chapter = next((t for first, t in reversed(chapters) if first <= i), "")
+        for k, beat in enumerate(scene.get("beats") or []):
+            raw = doodle.raw_path(out_dir, i, k)
+            rows.append({"id": doodle.beat_id(i, k), "scene": i, "chapter": chapter, **beat,
+                         "image": str(raw) if raw.exists() else None})
+    return rows
+
+
+def doodle_thumb(path: str | Path, width: int = 360) -> Path | None:
+    """A small JPEG of a drawing for the gallery, cached by file and modification time."""
+    import hashlib
+    from PIL import Image
+    path = Path(path)
+    if not path.exists():
+        return None
+    THUMB_CACHE.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(f"{path.resolve()}|{path.stat().st_mtime_ns}|{width}".encode("utf-8")).hexdigest()[:20]
+    thumb = THUMB_CACHE / f"d_{key}.jpg"
+    if not thumb.exists():
+        with Image.open(path) as im:
+            im = im.convert("RGB")
+            im.thumbnail((width, width))
+            im.save(thumb, format="JPEG", quality=82)
+    return thumb
+
+
+def doodle_start_render(slug: str) -> bool:
+    """Frames, timing, ffmpeg and thumbnail in the background (several minutes for ten minutes of video)."""
+    for stale in ("final.mp4", "final_1x.mp4"):
+        (OUTPUT_DIR / slug / stale).unlink(missing_ok=True)
+    start_background([PYTHON_EXE, str(RUN_PY), "make", "--slug", slug], OUTPUT_DIR / slug / "render.log")
+    return True
+
+
+def doodle_fit_note(slug: str) -> str:
+    """How the narration length compares with the doodle window (9-11 minutes by default)."""
+    script = read_script(slug) or {}
+    total = sum(a.duration for a in scene_audios(slug, len(script.get("scenes", []))))
+    low, high = doodle.settings(project_cfg(slug))["fit_minutes"]
+    minutes = total / 60
+    if not total:
+        return ""
+    if low - 0.05 <= minutes <= high + 0.05:
+        return f"✅ {minutes:.1f} minutes, inside the {low}-{high} minute window."
+    return (f"⚠️ {minutes:.1f} minutes even after re-timing as far as allowed; the script is too "
+            f"{'short' if minutes < low else 'long'} for {low}-{high} minutes. Rewrite or edit script.json.")
+
+
+# ---------------------------------------------------------------------------
 # Lofi
 # ---------------------------------------------------------------------------
 
@@ -556,14 +736,20 @@ def lofi_save_details(slug: str, title: str, description: str, thumbnail_text: s
     write_json(OUTPUT_DIR / slug / "script.json", script)
 
 
-def lofi_start_render(slug: str) -> None:
+def lofi_start_render(slug: str) -> bool:
     release_gpu()
     (OUTPUT_DIR / slug / "final.mp4").unlink(missing_ok=True)
     start_background([PYTHON_EXE, str(RUN_PY), "lofi", "--slug", slug], OUTPUT_DIR / slug / "render.log")
+    return True   # act() treats None as a failure, which kept the page from switching to the progress view
 
 
 def acestep_running() -> bool:
     return lofi_music.acestep_available(cfg())
+
+
+def kaggle_ready() -> bool:
+    from pipeline import kaggle_images
+    return kaggle_images.installed() and kaggle_images.configured()
 
 
 def music_library() -> dict:

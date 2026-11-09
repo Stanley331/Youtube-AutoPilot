@@ -547,6 +547,40 @@ def _acestep_track(cfg: dict, out_dir: Path, index: int, title: str, seed_text: 
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _kaggle_tracks(cfg: dict, out_dir: Path, names: list[str], seed_text: str, minutes: float) -> list[Track]:
+    """Every missing track in one Kaggle job; tracks already on disk for this seed are kept."""
+    from . import kaggle_music
+    s = settings(cfg)
+    tracks: list[Track | None] = []
+    wanted = []
+    for i, title in enumerate(names):
+        mp3 = out_dir / f"track_{i + 1:02d}.mp3"
+        meta = mp3.with_suffix(".json")
+        seed = f"{seed_text}|{i}"
+        if mp3.exists() and meta.exists():
+            saved = json.loads(meta.read_text(encoding="utf-8"))
+            if saved.get("seed_text") == seed and saved.get("engine") == "kaggle":
+                tracks.append(Track(**{k: saved[k] for k in Track.__dataclass_fields__}))
+                continue
+        tracks.append(None)
+        wanted.append({"id": mp3.stem, "title": title, "seed": _seed(seed) % (2 ** 31), "index": i})
+    if wanted:
+        log(f"music: {len(wanted)} tracks to generate on Kaggle (one job)")
+        summary = kaggle_music.run_job(out_dir, wanted, int(max(10, min(600, minutes * 60))),
+                                       s["acestep_prompt"], int(s["acestep_steps"]), cfg)
+        for item in wanted:
+            mp3 = out_dir / f"{item['id']}.mp3"
+            if item["id"] not in summary["done"] or not mp3.exists():
+                raise RuntimeError(f"Kaggle did not return {item['id']}: "
+                                   f"{summary['failed'].get(item['id'], 'missing from the output')}")
+            track = Track(path=mp3.name, title=item["title"], seconds=round(_duration(mp3), 2),
+                          bpm=0, key="", engine="kaggle")
+            mp3.with_suffix(".json").write_text(
+                json.dumps(dict(track.to_dict(), seed_text=f"{seed_text}|{item['index']}"), indent=2), encoding="utf-8")
+            tracks[item["index"]] = track
+    return [t for t in tracks if t is not None]
+
+
 def generate_tracks(cfg: dict, out_dir: Path, total_minutes: float, seed_text: str,
                     titles: list[str] | None = None, engine: str | None = None) -> list[Track]:
     """Enough tracks to fill ``total_minutes``; reuses tracks already on disk for the same seed."""
@@ -557,6 +591,14 @@ def generate_tracks(cfg: dict, out_dir: Path, total_minutes: float, seed_text: s
     out_dir.mkdir(parents=True, exist_ok=True)
     names = track_titles(count, seed_text, titles)
     tracks: list[Track] = []
+    if engine == "kaggle":
+        try:
+            return _kaggle_tracks(cfg, out_dir, names, seed_text, per)
+        except Exception as exc:
+            if not s["fallback_to_procedural"]:
+                raise
+            log(f"music: Kaggle failed; composing procedurally instead. {type(exc).__name__}: {str(exc)[:1500]}")
+            engine = "procedural"
     if engine == "acestep" and not acestep_available(cfg):
         if not s["fallback_to_procedural"]:
             raise RuntimeError(acestep_hint(cfg))

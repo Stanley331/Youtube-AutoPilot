@@ -67,7 +67,8 @@ PICTURE_LABELS = {
 }
 MUSIC_LABELS = {
     "pixabay": "Pixabay library: tracks you downloaded (instant)",
-    "acestep": "ACE-Step 1.5: AI music, about 9 minutes per track",
+    "kaggle": "ACE-Step on Kaggle's free GPU: one job for the whole tracklist",
+    "acestep": "ACE-Step 1.5 on this PC's GPU: about 9 minutes per track",
     "procedural": "Composer: synthesized here, about 1 minute per track",
 }
 KIND_BLURB = {
@@ -76,6 +77,10 @@ KIND_BLURB = {
     "long": ("16:9, about ten minutes, with chapters", "An outline and six chapters written one by one, "
                                                        "chapter timestamps in the description, and Shorts cut "
                                                        "from it afterwards. Plan half an hour."),
+    "doodle": ("16:9, 9 to 11 minutes, a drawing per sentence", "Gemini writes a sourced, chaptered script; "
+                                                             "Kaggle's free GPU draws a cartoon for every "
+                                                             "sentence with one recurring character. Plan an "
+                                                             "hour, mostly waiting."),
     "lofi": ("An hour of music over one animated loop", "Describe a cozy scene, approve a Pixabay animation, "
                                                         "pick the music, then render in the background. "
                                                         "Everything is free to use commercially."),
@@ -226,7 +231,7 @@ def library(projects: list[dict]) -> None:
         if st.button("➕ New video", key="lib_new", type="primary"):
             go("new")
         return
-    kinds = ["all", "short", "long", "lofi"]
+    kinds = ["all", "short", "long", "doodle", "lofi"]
     choice = st.pills("Show", kinds, default="all", key="lib_filter",
                       format_func=lambda k: "All" if k == "all" else f"{h.KIND_ICONS[k]} {h.KIND_LABELS[k]}")
     shown = [p for p in projects if choice in ("all", None) or p["format"] == choice]
@@ -255,12 +260,15 @@ def library(projects: list[dict]) -> None:
 
 def new_video() -> None:
     st.title("New video")
+    if st.session_state.get("script_job"):   # a script is being written: follow it, whatever kind was picked
+        script_progress(st.session_state["script_job"])
+        return
     kind = st.session_state.get("new_kind")
     stepper(["Kind", "Details"], [bool(kind), False], 1 if kind else 0)
     if not kind:
         st.markdown("#### What do you want to make?")
-        cols = st.columns(3)
-        for col, k in zip(cols, ("short", "long", "lofi")):
+        cols = st.columns(4)
+        for col, k in zip(cols, ("short", "long", "doodle", "lofi")):
             with col, st.container(border=True):
                 st.markdown(f"### {h.KIND_ICONS[k]} {h.KIND_LABELS[k]}")
                 st.markdown(f"**{KIND_BLURB[k][0]}**")
@@ -281,32 +289,69 @@ def new_video() -> None:
         new_narrated_form(kind)
 
 
+@st.fragment(run_every="3s")
+def script_progress(log_path: str) -> None:
+    job = h.script_job(log_path)
+    if job["state"] == "done":
+        st.session_state.pop("script_job", None)
+        set_step(job["slug"], None)
+        go("project", slug=job["slug"])
+    lines = [ln for ln in job["log"].splitlines() if ln.startswith("[")]
+    minutes, seconds = divmod(int(job["elapsed"]), 60)
+    if job["state"] == "running":
+        st.info(f"Writing the script: {minutes}:{seconds:02d} so far. A long or doodle script is an outline "
+                "plus one request per chapter, usually 3 to 8 minutes; longer when the model is busy and "
+                "retries. You can leave this page; the project appears in the library when it is done.")
+        st.code("\n".join(lines[-12:]) or "(starting...)", language="text")
+        return
+    st.error("Writing the script failed. The cause is at the end of the log below.")
+    st.code(job["log"][-5000:], language="text")
+    if st.button("Back to the form", key="script_job_back"):
+        st.session_state.pop("script_job", None)
+        st.rerun(scope="app")
+
+
 def new_narrated_form(kind: str) -> None:
     st.markdown("#### 2. The idea")
     st.caption("A rough premise, question or fact topic is enough; the script is written from it. "
                "You review the script before anything else runs.")
-    idea = st.text_area("Topic or idea", key="new_idea", height=110,
-                        placeholder="e.g. Why do cats always land on their feet?"
-                        if kind == "short" else "e.g. How the Great Hedge of India worked")
+    placeholder = {"short": "e.g. Why do cats always land on their feet?",
+                   "long": "e.g. How the Great Hedge of India worked",
+                   "doodle": "e.g. What did ancient humans actually do all day? Compare hunter-gatherer "
+                             "work hours with early farmers."}[kind]
+    idea = st.text_area("Topic or idea", key="new_idea", height=110, placeholder=placeholder)
     col_a, col_b = st.columns(2)
     with col_a:
         fmt = st.radio("Treatment", ["auto", "story", "fact"], horizontal=True, key="new_fmt",
+                       index=2 if kind == "doodle" else 0,
                        help="story = original fiction with a character and a turn; fact = an explainer with "
                             "claims to verify; auto lets the model decide from the idea.")
     with col_b:
-        sources = list(h.SOURCES)
-        default = h.cfg()["visuals"]["source"]
-        visuals = st.selectbox("Visuals", sources, index=sources.index(default) if default in sources else 0,
-                               key="new_visuals", format_func=lambda s: f"{s}: {VISUALS_BLURB[s]}")
-    wait = "a few minutes: an outline, then one pass per chapter" if kind == "long" else "about a minute"
+        if kind == "doodle":
+            backends = list(h.doodle.BACKENDS)
+            default = h.doodle.settings(h.cfg())["images"]
+            visuals = st.selectbox("Drawings", backends,
+                                   index=backends.index(default) if default in backends else 0,
+                                   key="new_backend", format_func=h.doodle.BACKEND_LABELS.get)
+            if visuals == "kaggle" and not h.kaggle_ready()["ok"]:
+                st.caption("⚠️ " + h.kaggle_ready()["hint"] + " You can still write the script now.")
+        else:
+            sources = list(h.SOURCES)
+            default = h.cfg()["visuals"]["source"]
+            visuals = st.selectbox("Visuals", sources, index=sources.index(default) if default in sources else 0,
+                                   key="new_visuals", format_func=lambda s: f"{s}: {VISUALS_BLURB[s]}")
+    if kind in ("long", "doodle"):
+        from pipeline.longform import long_script_provider
+        st.caption(f"Script writer: {long_script_provider() or 'LLM_PROVIDER from .env'} "
+                   "(set LONG_SCRIPT_PROVIDER in .env to change it).")
     if st.button("✍️ Write the script", key="new_write", type="primary"):
         if not idea.strip():
             st.warning("Type the idea first.")
         else:
-            slug = act(f"Writing the script ({wait})...", h.create_script, idea.strip(), fmt, kind, visuals)
-            if slug:
-                set_step(slug, None)
-                go("project", slug=slug)
+            log_path = act("Starting...", h.start_script_job, idea.strip(), fmt, kind, visuals)
+            if log_path:
+                st.session_state["script_job"] = log_path
+                st.rerun()
 
 
 def _apply_preset() -> None:
@@ -369,6 +414,13 @@ def music_picker(key: str, default: str, minutes: int = 60) -> str:
             else:
                 st.caption("⚠️ " + note + f" Add more from {lib['url']} for a {minutes}-minute video with "
                            "no repeats; otherwise the least-used tracks are reused.")
+    if engine == "kaggle":
+        if h.kaggle_ready():
+            st.caption("✅ Kaggle credentials found. The job runs on Kaggle; expect a few minutes of install and "
+                       "model download, then about a minute per track.")
+        else:
+            st.warning("Kaggle is not set up: put KAGGLE_API_TOKEN in .env (kaggle.com/settings, API) and verify "
+                       "your phone number there so notebooks get a GPU. Until then tracks are composed procedurally.")
     if engine == "acestep":
         if h.acestep_running():
             st.caption("✅ ACE-Step server is running.")
@@ -432,14 +484,17 @@ def danger_zone(slug: str) -> None:
 # ---------------------------------------------------------------------------
 
 NARRATED_STEPS = ["Script", "Narrator", "Visuals", "Render", "Publish"]
+DOODLE_STEPS = ["Script", "Narrator", "Drawings", "Render", "Publish"]
 
 
 def narrated_wizard(p: dict, script: dict) -> None:
     slug, state = p["slug"], p["state"]
+    is_doodle = p["format"] == "doodle"
+    rendering = is_doodle and p["render"] == "running"
     done = [bool(state.get("script_ok")), p["voice"], p["selected"] and bool(state.get("visuals_ok")),
-            p["video"], bool(p["youtube_id"])]
-    cur = current_step(slug, done)
-    stepper(NARRATED_STEPS, done, cur)
+            p["video"] and not rendering, bool(p["youtube_id"])]
+    cur = 3 if rendering else current_step(slug, done)
+    stepper(DOODLE_STEPS if is_doodle else NARRATED_STEPS, done, cur)
 
     # 1. Script
     if cur == 0:
@@ -459,14 +514,18 @@ def narrated_wizard(p: dict, script: dict) -> None:
         todo_row(1, "Narrator")
     # 3. Visuals
     if cur == 2:
-        step_visuals(slug, script, p)
+        (step_drawings if is_doodle else step_visuals)(slug, script, p)
     elif done[2]:
-        done_row(slug, 2, "Visuals", f"{p['visuals']}; a clip or picture chosen for every scene")
+        if is_doodle:
+            done_row(slug, 2, "Drawings", f"{p['images']['done']} drawings and {p['images']['cards']} title "
+                                          f"cards via {p['visuals']}", editable=not rendering)
+        else:
+            done_row(slug, 2, "Visuals", f"{p['visuals']}; a clip or picture chosen for every scene")
     elif cur < 2:
-        todo_row(2, "Visuals")
+        todo_row(2, "Drawings" if is_doodle else "Visuals")
     # 4. Render
     if cur == 3:
-        step_render(slug, script, p)
+        (step_doodle_render if is_doodle else step_render)(slug, script, p)
     elif done[3]:
         done_row(slug, 3, "Render", f"{h.video_duration(slug) / 60:.1f} min, final.mp4 ready")
     elif cur < 3:
@@ -477,7 +536,8 @@ def narrated_wizard(p: dict, script: dict) -> None:
     elif cur < 4:
         todo_row(4, "Publish")
     st.markdown("---")
-    danger_zone(slug)
+    if not rendering:
+        danger_zone(slug)
 
 
 def step_script(slug: str, script: dict) -> None:
@@ -490,10 +550,27 @@ def step_script(slug: str, script: dict) -> None:
     if script.get("tags"):
         st.caption("Tags: " + ", ".join(script["tags"][:12]))
     chapters = {int(c.get("first_scene", -1)): c.get("title", "") for c in script.get("chapters", []) or []}
+    if h.doodle.is_doodle(script):
+        beats = sum(len(s["beats"]) for s in script["scenes"])
+        words = sum(len(s.get("narration", "").split()) for s in script["scenes"])
+        st.markdown(f"**Recurring character:** {script.get('main_character') or '(none)'}  ·  "
+                    f"**{beats} drawings**, about {words / max(1, beats):.0f} words each  ·  "
+                    f"about {words / 140:.1f} min at a calm pace")
     with st.expander(f"Scenes ({len(script.get('scenes', []))})", expanded=True):
         for i, s in enumerate(script.get("scenes", [])):
             if i in chapters:
                 st.markdown(f"**Chapter: {chapters[i]}**")
+            if s.get("beats"):
+                st.markdown(f"**{i + 1}.**")
+                for b in s["beats"]:
+                    if b.get("card"):
+                        st.markdown(f"- {b['text']}  \n  🪧 *title card:* **{b['card']}**")
+                    else:
+                        note = f" · label **{b['label']}**" if b.get("label") else ""
+                        who = " · 🧍 character" if b.get("character") else ""
+                        st.markdown(f"- {b['text']}  \n  <span class='muted'>✏️ {html.escape(b['picture'])}"
+                                    f"{who}{html.escape(note)}</span>", unsafe_allow_html=True)
+                continue
             st.markdown(f"**{i + 1}.** {s.get('narration', '')}")
             st.caption(f"Picture: {s.get('visual_description', '')}  ·  on screen: "
                        f"{s.get('on_screen_text') or 'nothing'}")
@@ -512,6 +589,8 @@ def step_narrator(slug: str, script: dict, p: dict) -> None:
     current = script.get("voice") or {}
     engine, name = narrator_picker(f"nar_{slug}", current.get("engine") or h.cfg()["voice"].get("engine", "kokoro"),
                                    current.get("name", ""))
+    if p["voice"] and p["format"] == "doodle":
+        st.markdown(h.doodle_fit_note(slug))
     if p["voice"]:
         st.success("Narration exists. Narrating again replaces it and removes the rendered video.")
         with st.expander("Listen per scene"):
@@ -635,6 +714,121 @@ def scene_chooser(slug: str, i: int, scene: dict, cands: list[dict], current: st
                     st.rerun()
         if current:
             st.caption(f"Chosen: {Path(current).name}")
+
+
+@st.fragment(run_every="10s")
+def background_progress(slug: str, log_name: str) -> None:
+    log_path = h.OUTPUT_DIR / slug / log_name
+    st.code(h.log_tail(log_path, 2500) or "(starting...)", language="text")
+    if h.log_state(log_path, stale_minutes=20) != "running":
+        st.rerun(scope="app")
+
+
+def step_drawings(slug: str, script: dict, p: dict) -> None:
+    st.markdown("### 3. Draw the pictures")
+    images = p["images"]
+    if p["drawing"] == "running":
+        job = h.kaggle_images.job_state(h.OUTPUT_DIR / slug) if p["visuals"] == "kaggle" else {}
+        where = f" Watch it on Kaggle: {job['url']}" if job.get("url") and job.get("status") == "pushed" else ""
+        st.info(f"Drawing {len(images['missing'])} pictures via {p['visuals']} in the background. Kaggle "
+                f"usually needs a few minutes to start and then 3-5 seconds a picture. You can close this "
+                f"page or work on other videos meanwhile.{where}")
+        background_progress(slug, "drawing.log")
+        return
+    if p["drawing"] == "failed":
+        st.error("The last drawing run failed. Its log is below; fix the cause and draw again "
+                 "(pictures already drawn are kept).")
+        with st.expander("Drawing log", expanded=True):
+            st.code(h.log_tail(h.OUTPUT_DIR / slug / "drawing.log", 5000), language="text")
+
+    st.caption(f"{images['beats']} beats: {images['needed']} drawings plus {images['cards']} handwritten "
+               f"title cards (drawn here). {images['done']} of {images['needed']} drawings are done.")
+    backends = list(h.doodle.BACKENDS)
+    backend = st.selectbox("Draw with", backends, index=backends.index(p["visuals"]) if p["visuals"] in backends else 0,
+                           key=f"backend_{slug}", format_func=h.doodle.BACKEND_LABELS.get)
+    ready = h.kaggle_ready()
+    if backend == "kaggle" and not ready["ok"]:
+        st.warning(("Install the Kaggle client: `.venv\\Scripts\\pip install -r requirements.txt`. "
+                    if not ready["installed"] else "") + ready["hint"])
+    if images["missing"]:
+        label = f"✏️ Draw {len(images['missing'])} pictures" + (" on Kaggle" if backend == "kaggle" else "")
+        if st.button(label, key=f"draw_{slug}", type="primary",
+                     disabled=backend == "kaggle" and not ready["ok"]):
+            if act("Starting...", h.doodle_start_drawing, slug, backend) is not None:
+                st.rerun()
+
+    beats = h.doodle_beats(slug)
+    if any(b["image"] for b in beats):
+        doodle_gallery(slug, beats)
+    if not images["missing"]:
+        st.success("Every sentence has its drawing.")
+        continue_button(slug, f"draw_ok_{slug}", "Continue to render →", visuals_ok=True)
+
+
+def doodle_gallery(slug: str, beats: list[dict]) -> None:
+    st.markdown("#### The drawings")
+    st.caption("Tick any picture that is wrong or off-model, then redraw just those (a new take each time). "
+               "Labels and title cards are added at render time.")
+    marked = [b["id"] for b in beats if st.session_state.get(f"redo_{slug}_{b['id']}")]
+    if marked:
+        if st.button(f"🔁 Redraw {len(marked)} marked", key=f"redo_btn_{slug}", type="primary"):
+            if act("Marking...", h.doodle_redo, slug, marked):
+                for bid in marked:
+                    st.session_state[f"redo_{slug}_{bid}"] = False
+                backend = st.session_state.get(f"backend_{slug}") or "kaggle"
+                if act("Starting...", h.doodle_start_drawing, slug, backend) is not None:
+                    st.rerun()
+    chapters: dict[str, list[dict]] = {}
+    for b in beats:
+        chapters.setdefault(b["chapter"] or "Scenes", []).append(b)
+    for n, (title, rows) in enumerate(chapters.items()):
+        drawn = sum(1 for b in rows if b["image"] or b.get("card"))
+        with st.expander(f"{title}  ({drawn}/{len(rows)})", expanded=n == 0):
+            cols = st.columns(4)
+            for k, b in enumerate(rows):
+                with cols[k % 4]:
+                    if b.get("card"):
+                        st.markdown(f"<div style='border:1px dashed rgba(128,128,128,.5);padding:1.4rem .5rem;"
+                                    f"text-align:center;color:#8a2b1d;font-weight:700'>{html.escape(b['card'])}</div>",
+                                    unsafe_allow_html=True)
+                    elif b["image"]:
+                        thumb = h.doodle_thumb(b["image"])
+                        if thumb:
+                            st.image(str(thumb), width="stretch")
+                    else:
+                        st.markdown("<div class='todo-row'>not drawn yet</div>", unsafe_allow_html=True)
+                    note = f" · **{b['label']}**" if b.get("label") else ""
+                    st.caption(f"{b['text'][:110]}{note}", help=b.get("picture"))
+                    if b["image"] and not b.get("card"):
+                        st.checkbox("Redraw", key=f"redo_{slug}_{b['id']}")
+
+
+def step_doodle_render(slug: str, script: dict, p: dict) -> None:
+    st.markdown("### 4. Render")
+    if p["render"] == "running":
+        st.info("Rendering in the background: every drawing gets a slow drift, timed to its sentence. "
+                "About a minute of rendering per minute of video.")
+        background_progress(slug, "render.log")
+        return
+    if p["render"] == "failed":
+        st.error("The last render failed. The log is below; fix the cause and render again.")
+        with st.expander("Render log", expanded=True):
+            st.code(h.log_tail(h.OUTPUT_DIR / slug / "render.log", 5000), language="text")
+    cfg = h.project_cfg(slug)
+    total = sum(p.get("durations", []))
+    st.markdown(f"- **{p['images']['beats']} drawings and cards** over {total / 60:.1f} minutes of narration\n"
+                f"- **{cfg['video']['resolution'][0]}×{cfg['video']['resolution'][1]}**, burned captions "
+                f"{'on' if cfg['captions'].get('enabled', True) else 'off'} (YouTube's own captions still work)\n"
+                f"- Music bed: {'on' if cfg['music'].get('enabled') else 'off'} (assets/music)")
+    label = "🎬 Render again" if p["video"] else "🎬 Render in the background"
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button(label, key=f"drender_{slug}", type="primary", width="stretch"):
+            if act("Starting the render...", h.doodle_start_render, slug) is not None:
+                st.rerun()
+    with col_b:
+        if p["video"]:
+            continue_button(slug, f"keep_drender_{slug}", "Keep this render →")
 
 
 def step_render(slug: str, script: dict, p: dict) -> None:
@@ -840,7 +1034,8 @@ def lofi_step_music(slug: str, script: dict, p: dict) -> None:
     with col_a:
         if st.button("🎵 Preview the first track", key=f"pv_{slug}", width="stretch",
                      help="The full render reuses it, so nothing is wasted."):
-            wait = {"acestep": "about 9 minutes with ACE-Step", "pixabay": "instant"}.get(engine, "about a minute")
+            wait = {"acestep": "about 9 minutes with ACE-Step", "pixabay": "instant",
+                    "kaggle": "10 to 20 minutes for a Kaggle job"}.get(engine, "about a minute")
             track = act(f"Composing the first track ({wait})...", h.lofi_preview_track, slug, engine)
             if track:
                 st.session_state[key] = track
@@ -884,8 +1079,9 @@ def lofi_step_render(slug: str, script: dict, p: dict) -> None:
         music_line = f"- **Music from the Pixabay library**, least-used tracks first; no generation time"
     else:
         n = h.tracks_needed(minutes)
-        per = 9 if engine == "acestep" else 1
-        music_line = f"- **{n} tracks** with {engine}, roughly {n * per} minutes of generation"
+        per = {"acestep": 9, "kaggle": 1}.get(engine, 1)
+        setup = " plus about 10 minutes of Kaggle setup" if engine == "kaggle" else ""
+        music_line = f"- **{n} tracks** with {engine}, roughly {n * per} minutes of generation{setup}"
     st.markdown(f"{music_line}\n"
                 f"- Picture: {PICTURE_LABELS.get(settings.get('visuals', ''), settings.get('visuals', ''))}, "
                 f"rain {settings.get('rain', 'auto')}\n"

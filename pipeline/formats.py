@@ -2,6 +2,7 @@
 
   short  vertical 9:16, under a minute, a handful of scenes (YouTube Shorts)
   long   16:9, around ten minutes, chaptered narration with timestamps
+  doodle 16:9, 9-11 minutes, a hand-drawn cartoon for every sentence (images drawn on Kaggle)
   lofi   16:9, a looping animated scene over generated music, no narration
 
 ``config.yaml`` has one base configuration (tuned for Shorts) and a ``formats:``
@@ -34,6 +35,14 @@ BUILTIN = {
         "visuals": {"rank_batch_scenes": 6, "rank_max_requests": 6, "candidates_per_scene": 5},
         "diffusion": {"width": 896, "height": 512},
     },
+    "doodle": {
+        "label": "Doodle explainer: 16:9, 9 to 11 minutes, a new drawing every sentence",
+        "video": {"resolution": [1920, 1080], "target_minutes": 10, "max_scenes": 0,
+                  "chapters": 6, "scenes_per_chapter": 5},
+        "captions": {"enabled": False, "size": 54, "words_per_line": 5},
+        "motion": {"strength": 0.04, "base_zoom": 1.02},
+        "diffusion": {"width": 896, "height": 512},
+    },
     "lofi": {
         "label": "Lofi: 16:9 looping scene over generated music",
         "video": {"resolution": [1920, 1080], "fps": 24, "max_scenes": 1},
@@ -42,7 +51,8 @@ BUILTIN = {
     },
 }
 # Sections a format may override; anything else in a profile is informational.
-SECTIONS = ("video", "captions", "visuals", "diffusion", "music", "lofi", "youtube", "motion")
+SECTIONS = ("video", "captions", "visuals", "diffusion", "music", "lofi", "youtube", "motion",
+            "doodle", "kaggle")
 
 
 def names(cfg: dict | None = None) -> list[str]:

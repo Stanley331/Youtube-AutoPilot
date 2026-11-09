@@ -14,7 +14,7 @@ import copy
 import shutil
 from pathlib import Path
 
-from . import formats, history
+from . import doodle, formats, history
 from .config import OUTPUT_DIR
 from .llm import generate_json
 from .util import log, read_json, write_json
@@ -199,6 +199,11 @@ def cut_shorts(parent_dir: Path, cfg: dict, count: int | None = None,
             "art_style": script.get("art_style", ""), "voice": script.get("voice"),
             "scenes": scenes, "claims_to_verify": [],
         }
+        if doodle.is_doodle(script):
+            # Doodle cuts keep a drawing per sentence: the parent's images, re-framed vertically.
+            src = script.get("doodle_source") or {}
+            child_script["doodle_source"] = {"dir": src.get("dir") or str(parent_dir),
+                                             "first_scene": int(src.get("first_scene", 0)) + first}
         # Narration: the parent's files, renumbered from scene 0.
         audios = []
         for k, i in enumerate(range(first, last + 1)):
@@ -226,8 +231,12 @@ def cut_shorts(parent_dir: Path, cfg: dict, count: int | None = None,
         from .script import save_script
         save_script(child_script, child)
         log(f"cuts: short {n}: scenes {first + 1}-{last + 1} ({_span(durations, first, last):.0f}s) '{child_script['title']}'")
-        plan = clips_for_scenes(scenes, [a.duration for a in audios], child, short_cfg, source,
-                                script_context=child_script, selections=selections)
+        if doodle.is_doodle(child_script):
+            frames = doodle.compose_frames(child, child_script, short_cfg)
+            plan = doodle.clip_plan(child_script, audios, frames, short_cfg)
+        else:
+            plan = clips_for_scenes(scenes, [a.duration for a in audios], child, short_cfg, source,
+                                    script_context=child_script, selections=selections)
         write_json(child / "clip_plan.json", plan_to_json(plan))
         build_ass(audios, child / "captions.ass", short_cfg)
         final = assemble(child, plan, audios, short_cfg)

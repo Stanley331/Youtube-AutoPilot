@@ -6,7 +6,7 @@ from pathlib import Path
 
 from . import motion
 from .config import ROOT
-from .util import log, run
+from .util import duration_of, log, run
 
 
 def assemble(out_dir: Path, plan: list, scene_audios: list, cfg: dict) -> Path:
@@ -18,6 +18,7 @@ def assemble(out_dir: Path, plan: list, scene_audios: list, cfg: dict) -> Path:
     # 1. Every segment becomes a uniform silent mp4 of exactly the right length.
     segments = []
     n = 0
+    total = sum(len(scene_clips) for scene_clips in plan)
     strength = float(motion.settings(cfg)["strength"])
     for scene_clips in plan:
         for item in scene_clips:
@@ -33,12 +34,18 @@ def assemble(out_dir: Path, plan: list, scene_audios: list, cfg: dict) -> Path:
                 else:
                     input_args = ["-stream_loop", "-1", "-i", str(clip)]
                     filters = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps={vid['fps']},setsar=1"
+                # Write beside the final name and rename when done: a render that is killed
+                # midway must never leave a truncated segment that the next render reuses.
+                part = seg.with_name(seg.stem + ".part.mp4")
                 run(["ffmpeg", "-y", "-loglevel", "error", *input_args,
                      "-t", f"{seconds:.3f}", "-an", "-vf", filters,
                      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                     "-pix_fmt", "yuv420p", str(seg)])
+                     "-pix_fmt", "yuv420p", str(part)])
+                part.replace(seg)
             segments.append(seg)
             n += 1
+            if n % 25 == 0 and n < total:
+                log(f"assemble: {n}/{total} segments cut")
     log(f"assemble: {len(segments)} segments cut")
 
     # 2. Concatenate the picture track.
@@ -53,6 +60,12 @@ def assemble(out_dir: Path, plan: list, scene_audios: list, cfg: dict) -> Path:
         encoding="utf-8")
     run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
          "-i", "audio_list.txt", "-c:a", "aac", "-b:a", "192k", "voice.m4a"], cwd=work)
+    # A damaged segment ends the concat early, and -shortest below would then cut the
+    # narration to match; stop with a clear error instead of shipping a short video.
+    picture, voice = duration_of(work / "video.mp4"), duration_of(work / "voice.m4a")
+    if picture < voice - 1.0:
+        raise RuntimeError(f"the picture track is {picture:.1f}s but the narration is {voice:.1f}s; "
+                           f"a segment in {work} is damaged. Delete the work folder and render again.")
     audio = "voice.m4a"
     music = _pick_music(cfg)
     if music:

@@ -88,7 +88,8 @@ def zoompan_filter(shot: dict | None, width: int, height: int, fps: int, seconds
     frames = max(int(round(seconds * fps)), 1)
     fx, fy = (float(v) for v in shot.get("focus", (0.5, 0.5)))
     base = max(float(shot.get("zoom", 1.0)), 1.0)
-    travel = max(float(strength), 0.02)
+    # A shot may carry its own strength (doodle drawings drift far less than photos).
+    travel = max(float(shot.get("strength", strength)), 0.02)
     t = f"(on/{frames})"
     move = shot.get("move", "zoom_in")
     if move == "zoom_in":

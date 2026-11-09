@@ -3,6 +3,7 @@
 
   python run.py make                      # pick a topic, write, voice, edit, thumbnail (a Short)
   python run.py make --length long        # a ten-minute 16:9 video with chapters
+  python run.py make --length doodle --idea "..."  # 9-11 min doodle explainer, drawings made on Kaggle
   python run.py cut <slug>                # Shorts cut from a finished long video
   python run.py lofi --idea "..."         # an hour of generated lofi music over an animated scene
   python run.py make --idea "..."         # expand a rough premise into a full script and video
@@ -125,6 +126,9 @@ def make_video(args, cfg) -> Path:
     voice_engine = args.voice or ("local" if dry else cfg["voice"]["engine"])
     # The dry run must work with no API keys, so it draws its panels locally.
     visual_source = args.visuals or ("illustration" if dry else cfg["visuals"]["source"])
+    if length == "doodle":
+        from pipeline import doodle
+        visual_source = _doodle_backend(args, cfg, dry)
 
     # ---- topic + script -------------------------------------------------
     if args.slug:
@@ -133,9 +137,14 @@ def make_video(args, cfg) -> Path:
             sys.exit(f"no script.json in {out_dir}")
         script = read_json(out_dir / "script.json")
         log(f"resuming '{script['title']}'")
+        # Resuming keeps the narration already made: its engine, unless --voice asks for another.
+        saved_engine = (script.get("voice") or {}).get("engine")
+        if not args.voice and saved_engine:
+            voice_engine = saved_engine
     else:
         if dry:
-            fixture = "sample_long_script.json" if length == "long" else "sample_script.json"
+            fixture = {"long": "sample_long_script.json", "doodle": "sample_doodle_script.json"}.get(
+                length, "sample_script.json")
             script = read_json(ROOT / "fixtures" / fixture)
             topic = {"title": script["title"]}
         else:
@@ -152,10 +161,12 @@ def make_video(args, cfg) -> Path:
                 topic = pick_topic(cfg, kind=None if args.format == "auto" else args.format, length=length)
                 topic["format"] = args.format if args.format != "auto" else topic.get("kind", "auto")
             log(f"topic: {topic['title']}")
-            if length == "long":
-                from pipeline.longform import write_long_script
-                log("script: writing a long-form script (outline, then one pass per chapter; a few minutes)")
-                script = write_long_script(cfg, topic)
+            if length in ("long", "doodle"):
+                from pipeline.longform import long_script_provider, write_long_script
+                who = long_script_provider() or "the configured model"
+                log(f"script: writing a {length} script with {who} (outline, then one pass per chapter; "
+                    "a few minutes)")
+                script = write_long_script(cfg, topic, doodle=length == "doodle")
             else:
                 log("script: writing (this takes a minute)")
                 script = write_script(cfg, topic)
@@ -171,10 +182,13 @@ def make_video(args, cfg) -> Path:
         out_dir.mkdir(parents=True, exist_ok=True)
         from pipeline.diffusion import pick_style
         from pipeline.script import save_script
-        style = pick_style(cfg, script)
+        style = pick_style(cfg, script) if length != "doodle" else ""
         if style:
             script["art_style"] = style   # AI panels: one look per video, rotated across a batch
         save_script(script, out_dir)
+        if args.stop_after == "script" or length == "doodle":
+            # The studio continues this project step by step (it starts scripts in the background).
+            write_json(out_dir / "ui_state.json", {"visuals": visual_source, "kind": length})
         history.add(slug, script["title"], topic["title"], kind=script.get("content_type", ""), fmt=length)
         words = sum(len(s["narration"].split()) for s in script["scenes"])
         log(f"script: {len(script['scenes'])} scenes, {words} words -> {out_dir / 'script.md'}")
@@ -183,6 +197,9 @@ def make_video(args, cfg) -> Path:
 
     # ---- voice ----------------------------------------------------------
     from pipeline.script import save_script
+    if length == "doodle" and doodle.sync_beats(script):
+        log("doodle: narration was edited; beats rebuilt from it")
+        save_script(script, out_dir)
     from pipeline.voice import synthesize_all
     from pipeline.voices import describe, resolve_voice
     voice = resolve_voice(script, cfg, voice_engine, args.voice_name)
@@ -193,6 +210,9 @@ def make_video(args, cfg) -> Path:
     log(f"voice: narrator {describe(voice['engine'], voice['name'])} via {voice['engine']}")
     audios = synthesize_all(script["scenes"], out_dir, cfg, voice_engine, voice["name"])
     total = sum(a.duration for a in audios)
+    if length == "doodle" and not dry:   # the sample is a minute long; nothing to fit
+        audios = doodle.fit_duration(out_dir, audios, cfg)
+        total = sum(a.duration for a in audios)
     log(f"voice: {total / 60:.1f} minutes of narration")
     if script.get("chapters"):
         from pipeline.longform import chapter_times, format_timestamp
@@ -202,6 +222,9 @@ def make_video(args, cfg) -> Path:
                                       for c in script["chapter_times"]))
     if args.stop_after == "voice":
         _stop(out_dir, "listen to output/.../audio/*.mp3")
+
+    if length == "doodle":
+        return _finish_doodle(args, cfg, script, out_dir, audios, visual_source)
 
     # ---- media candidates + selection ----------------------------------
     from pipeline.visuals import (clips_for_scenes, deserialize_candidates,
@@ -272,6 +295,56 @@ def make_video(args, cfg) -> Path:
     print(f"  4. Publish:      python run.py publish {out_dir.name}   (add --next-slot to schedule)")
     if length == "long":
         print(f"  5. Shorts:       python run.py cut {out_dir.name}   (excerpts re-rendered vertically)")
+    return out_dir
+
+
+def _doodle_backend(args, cfg, dry: bool) -> str:
+    """kaggle | diffusion | placeholder: the flag, else what the project was planned with, else config."""
+    from pipeline import doodle
+    choice = args.visuals
+    state = OUTPUT_DIR / args.slug / "ui_state.json" if args.slug else None
+    if not choice and state and state.exists():
+        choice = read_json(state).get("visuals")
+    choice = choice or ("placeholder" if dry else doodle.settings(cfg)["images"])
+    return choice if choice in doodle.BACKENDS else ("placeholder" if dry else "kaggle")
+
+
+def _finish_doodle(args, cfg, script, out_dir: Path, audios, backend: str) -> Path:
+    """Drawings, frames, timing, render and thumbnail for a doodle explainer."""
+    from pipeline import doodle
+    from pipeline.assemble import assemble
+    from pipeline.captions import build_ass
+    from pipeline.motion import plan_to_json
+    from pipeline.script import save_script
+    from pipeline.thumbnail import make_thumbnail
+    save_script(script, out_dir)
+    doodle.write_beat_index(out_dir, script)
+    status = doodle.generate_images(out_dir, script, cfg, backend)
+    if status["missing"]:
+        sys.exit(f"{len(status['missing'])} of {status['needed']} drawings are still missing "
+                 f"({', '.join(status['missing'][:6])}); run the same command again to retry them")
+    frames = doodle.compose_frames(out_dir, script, cfg)
+    log(f"doodle: {sum(len(r) for r in frames)} frames ready in {doodle.frames_dir(out_dir)}")
+    if args.stop_after in ("media_selection", "visuals"):
+        _stop(out_dir, "look through doodle/frames, then rerun with --slug " + out_dir.name)
+    plan = doodle.clip_plan(script, audios, frames, cfg)
+    write_json(out_dir / "clip_plan.json", plan_to_json(plan))
+    build_ass(audios, out_dir / "captions.ass", cfg)
+    log(f"assemble: rendering {sum(len(r) for r in plan)} drawings")
+    final = assemble(out_dir, plan, audios, cfg)
+    (out_dir / "final_1x.mp4").unlink(missing_ok=True)
+    log(f"assemble: {final}")
+    if args.stop_after == "video":
+        _stop(out_dir, f"watch {final}, then rerun with --slug {out_dir.name} for the thumbnail")
+    thumb = make_thumbnail(final, script["thumbnail_text"], out_dir / "thumbnail.jpg", cfg)
+    log(f"thumbnail: {thumb}")
+    print()
+    print("REVIEW CHECKLIST")
+    print(f"  1. Watch:        {final}")
+    print(f"  2. Thumbnail:    {thumb}")
+    print(f"  3. Fact-check:   {out_dir / 'script.md'}  (see 'Claims to verify')")
+    print(f"  4. Publish:      python run.py publish {out_dir.name}   (add --next-slot to schedule)")
+    print(f"  5. Shorts:       python run.py cut {out_dir.name}")
     return out_dir
 
 
@@ -407,10 +480,11 @@ def main():
                    help="narrator for this video (see: run.py voices); default rotates through the pool")
     m.add_argument("--format", choices=["auto", "story", "fact"], default="auto",
                    help="choose an original story, a fact explainer, or infer from your idea")
-    m.add_argument("--length", choices=["short", "long"], default="short",
-                   help="short = vertical Short under a minute; long = 16:9 ten-minute video with chapters")
-    m.add_argument("--visuals", choices=["pixabay", "diffusion", "illustration", "placeholder"],
-                   help="override config visuals source")
+    m.add_argument("--length", choices=["short", "long", "doodle"], default="short",
+                   help="short = vertical Short under a minute; long = 16:9 ten-minute video with chapters; "
+                        "doodle = 9-11 minute doodle explainer with a drawing per sentence")
+    m.add_argument("--visuals", choices=["pixabay", "diffusion", "illustration", "placeholder", "kaggle"],
+                   help="override config visuals source (doodle videos: kaggle, diffusion or placeholder)")
     m.add_argument("--force", action="store_true", help="wipe an existing output folder with the same slug")
     m.set_defaults(fn=cmd_make)
 
@@ -418,9 +492,9 @@ def main():
     b.add_argument("--count", type=int, default=3, help="how many videos to make (default 3)")
     b.add_argument("--format", choices=["auto", "story", "fact"], default="auto",
                    help="auto alternates story and fact")
-    b.add_argument("--length", choices=["short", "long"], default="short")
+    b.add_argument("--length", choices=["short", "long", "doodle"], default="short")
     b.add_argument("--voice", choices=["kokoro", "gemini", "elevenlabs", "local"])
-    b.add_argument("--visuals", choices=["pixabay", "diffusion", "illustration", "placeholder"])
+    b.add_argument("--visuals", choices=["pixabay", "diffusion", "illustration", "placeholder", "kaggle"])
     b.add_argument("--stop-after", choices=STAGES[1:], help="pause every video after this stage")
     b.add_argument("--dry-run", action="store_true", help="no API keys: the sample story, repeated")
     b.set_defaults(fn=cmd_batch)

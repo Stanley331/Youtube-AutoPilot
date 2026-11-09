@@ -21,6 +21,8 @@ TRANSIENT_GEMINI_STATUSES = {500, 502, 503, 504}
 # its own free-tier allowance, instead of retrying the same one.
 SWITCH_MODEL_GEMINI_STATUSES = {429}
 DEFAULT_TIMEOUT = 180
+GEMINI_BENCH_SECONDS = 10 * 60
+_GEMINI_BENCHED: dict[str, float] = {}   # model -> time until which it is skipped
 TRANSIENT_NEMOTRON_STATUSES = {429, 500, 502, 503, 504}
 
 
@@ -235,10 +237,19 @@ def _generate_gemini_json(system: str, prompt: str, schema: dict,
         },
     }
 
+    # A model that just failed (quota, overload, timeout) is skipped for a while: a ten-minute
+    # script makes seven calls, and retrying the dead model first cost minutes on every one.
+    benched = [m for m in models if _GEMINI_BENCHED.get(m, 0) > time.time()]
+    if benched and len(benched) < len(models):
+        models = [m for m in models if m not in benched]
+        log(f"Gemini {', '.join(benched)} failed a few minutes ago; using {models[0]} for now")
+
     response = None
     last_transport_error = None
     active_model = model
     for model_index, candidate_model in enumerate(models):
+        if model_index:
+            _GEMINI_BENCHED[models[model_index - 1]] = time.time() + GEMINI_BENCH_SECONDS
         active_model = candidate_model
         response = None
         url = GEMINI_API_URL.format(model=quote(candidate_model, safe="-._"))

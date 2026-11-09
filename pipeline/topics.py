@@ -32,7 +32,7 @@ def generate_ideas(cfg: dict, count: int = 10, length: str = "short") -> list[di
     ch = cfg["channel"]
     past = history.past_titles()
     past_text = "\n".join(f"- {t}" for t in past) or "- (none yet)"
-    if length == "long":
+    if length in ("long", "doodle"):
         system = (
             "You are a YouTube idea editor for ten-minute videos: original stories told in chapters and "
             "well-researched explainers that answer one big question in depth. Suggest a balanced mix. "
@@ -56,7 +56,7 @@ Tone: {ch['tone']}
 Videos already published (do not repeat these topics or close variants):
 {past_text}
 
-Propose {count} {'long-form video' if length == 'long' else 'short'} ideas, ordered best first, with a roughly even mix of story and fact ideas.
+Propose {count} {'long-form video' if length in ('long', 'doodle') else 'short'} ideas, ordered best first, with a roughly even mix of story and fact ideas.
 Facts should be evergreen and easy for a human to verify; stories should be original and have a strong emotional turn.
 Each idea needs a title, kind (story or fact), the specific angle, one sentence on why it will perform, and search demand."""
     return generate_json(system, prompt, IDEAS_SCHEMA, effort="medium")["ideas"]

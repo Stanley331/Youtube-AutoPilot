@@ -10,14 +10,20 @@ become YouTube chapter timestamps once the narration is timed.
 """
 from __future__ import annotations
 
+import time
+
 from .config import env
 from .llm import generate_json
 from .script import SCENE_SCHEMA, _as_str, _as_str_list, normalize_scenes
 from .util import log
 
-# A small free model writes fine Shorts but thin ten-minute explainers; LONG_SCRIPT_PROVIDER in
-# .env (gemini, anthropic, nemotron) routes only the long-form writing to a stronger one.
+# A small free model writes fine Shorts but thin ten-minute explainers, so long-form writing goes
+# to Gemini whenever a GEMINI_API_KEY is set; LONG_SCRIPT_PROVIDER in .env (gemini, anthropic,
+# nemotron) overrides that choice.
 THIN_CHAPTER_RATIO = 0.7
+# A chapter with high thinking can take minutes; a timeout throws the work away and restarts on
+# the fallback model, so long scripts wait longer than the 180 s default.
+LONG_TIMEOUT = 360
 
 OUTLINE_SCHEMA = {
     "type": "object",
@@ -69,6 +75,56 @@ STORYBOARD_RULES = """Rules for the visual storyboard (every scene):
 - on_screen_text: at most 5 words in ALL CAPS, or an empty string. Use it for a date, a number, or a name worth seeing."""
 
 
+def long_script_provider() -> str | None:
+    """Who writes ten-minute scripts: LONG_SCRIPT_PROVIDER, else Gemini when a key exists, else LLM_PROVIDER."""
+    explicit = (env("LONG_SCRIPT_PROVIDER") or "").lower()
+    if explicit:
+        return explicit
+    return "gemini" if env("GEMINI_API_KEY") else None
+
+
+DOODLE_OUTLINE_RULE = """
+- This is a hand-drawn doodle explainer: simple cartoon drawings on a white background, a new drawing every few seconds. main_character is required for every video, story or fact: one recurring doodle character who acts out the ideas, described in one phrase by look only (for example "a round-headed caveman with messy brown hair and a fur tunic"). Fit it to the topic."""
+
+DOODLE_RULES = """Rules for the doodle storyboard (every scene is a list of beats):
+- A beat is one short sentence or clause of the narration, about 5 to 14 words, read in order. The scene's narration is its beats joined with spaces, so put every word of the narration into exactly one beat and split long sentences at a comma.
+- picture: the simple drawing on screen while that beat is spoken, in at most 25 words: who or what, doing what, where. One clear subject, drawable as a flat cartoon. Turn abstract ideas into a concrete visual metaphor (a crowd of tiny skeletons for a death toll, a ticking clock for running out of time). Never ask for words, letters or numbers inside the drawing.
+- character: true when the recurring main character is in the picture. Use the character often; it is what makes the channel recognisable. The character lives in the pictures only: the narration never mentions "the main character" or "our character"; it speaks to the viewer ("you") or about the people of the topic.
+- label: on roughly one beat in four, a handwritten note of at most 3 words naming something in the picture (e.g. "COOLS DOWN", "17 HOURS A WEEK"); otherwise an empty string.
+- card: about once per chapter (its first beat, or a big turn), a full-screen handwritten title card of at most 5 words in capitals that sums up the moment (e.g. "THE WORKLOAD EXPLODES"); otherwise an empty string. A card beat still has its narration text."""
+
+BEAT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "text": {"type": "string"},
+        "picture": {"type": "string"},
+        "character": {"type": "boolean"},
+        "label": {"type": "string"},
+        "card": {"type": "string"},
+    },
+    "required": ["text", "picture", "character", "label", "card"],
+    "additionalProperties": False,
+}
+
+DOODLE_CHAPTER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "scenes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"beats": {"type": "array", "items": BEAT_SCHEMA}},
+                "required": ["beats"],
+                "additionalProperties": False,
+            },
+        },
+        "claims_to_verify": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["scenes", "claims_to_verify"],
+    "additionalProperties": False,
+}
+
+
 def settings(cfg: dict) -> dict:
     vid = cfg["video"]
     chapters = max(3, int(vid.get("chapters", 6) or 6))
@@ -77,11 +133,15 @@ def settings(cfg: dict) -> dict:
     return {"chapters": chapters, "scenes_per_chapter": per_chapter, "target_words": target_words,
             "words_per_chapter": max(120, target_words // chapters),
             "words_per_scene": max(30, target_words // (chapters * per_chapter)),
-            "provider": (env("LONG_SCRIPT_PROVIDER") or "").lower() or None}
+            "provider": long_script_provider()}
 
 
-def write_long_script(cfg: dict, topic: dict) -> dict:
-    """Outline, then one pass per chapter; returns a script dict with ``chapters``."""
+def write_long_script(cfg: dict, topic: dict, doodle: bool = False) -> dict:
+    """Outline, then one pass per chapter; returns a script dict with ``chapters``.
+
+    ``doodle`` writes every scene as a list of one-sentence beats, each with its own
+    picture, for the doodle explainer format (a new drawing every few seconds).
+    """
     s = settings(cfg)
     ch = cfg["channel"]
     requested = topic.get("format", "auto")
@@ -103,7 +163,7 @@ What a ten-minute video needs that a Short does not:
 - Exactly {s['chapters']} chapters that each advance the story or answer one sub-question, each ending on a small payoff or an open question that pulls into the next chapter.
 - A closing that pays off the hook, then one short line inviting the viewer to the next video. No summary of what was just said.
 - The title (under 60 characters) and thumbnail_text (at most 4 words, capitals) must be specific and honest; curiosity is fine, bait is not.
-- For facts: name what a person must check before publishing in claims_to_verify."""
+- For facts: name what a person must check before publishing in claims_to_verify.{DOODLE_OUTLINE_RULE if doodle else ''}"""
     prompt = f"""Plan a long-form video from this rough idea.
 
 User's idea or topic:
@@ -113,7 +173,7 @@ Why it will perform: {topic.get('why_it_will_perform', '')}
 
 Return: content_type, title, 3 alternative_titles, thumbnail_text, a YouTube description (2 short paragraphs, no timestamps), 8 to 15 tags, main_character (the recurring protagonist's look in one phrase, or an empty string), the hook narration (about 60 words), {s['chapters']} chapters each with a title (3 to 6 words, usable as a YouTube chapter name), a one-sentence summary and 4 to 6 beats (what happens or what is explained, in order), the closing narration (about 50 words), and claims_to_verify."""
     log("script: writing the outline" + (f" with {s['provider']}" if s["provider"] else ""))
-    outline = generate_json(system, prompt, OUTLINE_SCHEMA, effort="high", provider=s["provider"])
+    outline = generate_json(system, prompt, OUTLINE_SCHEMA, effort="high", provider=s["provider"], timeout=LONG_TIMEOUT)
     chapters_raw = [c for c in (outline.get("chapters") or []) if isinstance(c, dict) and _as_str(c.get("title"))]
     if len(chapters_raw) < 2:
         raise RuntimeError("The model returned an outline with fewer than two chapters")
@@ -138,7 +198,8 @@ Rules for the narration:
 - Facts: do not invent names, dates, quotes or statistics; put every specific claim into claims_to_verify.
 - Stories: keep the cast, names and setting consistent with the main character description.
 
-{STORYBOARD_RULES}"""
+{DOODLE_RULES if doodle else STORYBOARD_RULES}"""
+    chapter_schema = DOODLE_CHAPTER_SCHEMA if doodle else CHAPTER_SCHEMA
 
     scenes: list[dict] = []
     chapters: list[dict] = []
@@ -161,11 +222,13 @@ Beats, in order:
 
 The previous chapter ended with: {previous}{extra}"""
         log(f"script: chapter {n}/{len(chapters_raw)}: {_as_str(chapter.get('title'))}")
-        result = generate_json(scene_system, prompt, CHAPTER_SCHEMA, effort="high", provider=s["provider"])
-        new_scenes = normalize_scenes(result.get("scenes"))
+        began = time.time()
+        result = generate_json(scene_system, prompt, chapter_schema, effort="high", provider=s["provider"], timeout=LONG_TIMEOUT)
+        new_scenes = _scenes_of(result, doodle)
         if not new_scenes:
             raise RuntimeError(f"Chapter {n} came back without narrated scenes")
         words = sum(len(sc["narration"].split()) for sc in new_scenes)
+        log(f"script: chapter {n} written in {time.time() - began:.0f}s ({len(new_scenes)} scenes, {words} words)")
         if words < THIN_CHAPTER_RATIO * s["words_per_chapter"]:
             # Small models answer briefly; one more pass with the draft and the shortfall spelled out.
             log(f"script: chapter {n} is thin ({words} words, wanted {s['words_per_chapter']}); expanding")
@@ -175,8 +238,8 @@ The previous chapter ended with: {previous}{extra}"""
                              "when, how much, what it looked like, what happened next.\nPrevious draft:\n"
                              + "\n".join(f"- {sc['narration']}" for sc in new_scenes))
             try:
-                again = normalize_scenes(generate_json(scene_system, redo, CHAPTER_SCHEMA, effort="high",
-                                                       provider=s["provider"]).get("scenes"))
+                again = _scenes_of(generate_json(scene_system, redo, chapter_schema, effort="high",
+                                                 provider=s["provider"], timeout=LONG_TIMEOUT), doodle)
                 if sum(len(sc["narration"].split()) for sc in again) > words and again:
                     new_scenes = again
             except Exception as exc:
@@ -192,7 +255,7 @@ The previous chapter ended with: {previous}{extra}"""
     log(f"script: {len(chapters)} chapters, {len(scenes)} scenes, {words} words "
         f"(target {s['target_words']})")
     return {
-        "format": "long",
+        "format": "doodle" if doodle else "long",
         "content_type": content_type,
         "title": title,
         "alternative_titles": _as_str_list(outline.get("alternative_titles")),
@@ -204,6 +267,13 @@ The previous chapter ended with: {previous}{extra}"""
         "scenes": scenes,
         "claims_to_verify": claims,
     }
+
+
+def _scenes_of(result: dict, doodle: bool) -> list[dict]:
+    if not doodle:
+        return normalize_scenes(result.get("scenes"))
+    from .doodle import normalize_doodle_scenes
+    return normalize_doodle_scenes(result.get("scenes"))
 
 
 def chapter_times(script: dict, durations: list[float]) -> list[dict]:

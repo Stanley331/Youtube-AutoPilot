@@ -1,0 +1,186 @@
+{
+  "format": "doodle",
+  "content_type": "fact",
+  "title": "What Did Ancient Humans Do All Day?",
+  "alternative_titles": [
+    "The Original Affluent Society",
+    "Did Farming Make Us Work Harder?"
+  ],
+  "thumbnail_text": "17 HOURS A WEEK",
+  "description": "A dry-run sample: how hunter-gatherers spent their days, and what farming changed.",
+  "tags": [
+    "history",
+    "hunter gatherers",
+    "anthropology",
+    "doodle explainer"
+  ],
+  "main_character": "a round-headed caveman with messy brown hair and a fur tunic",
+  "chapters": [
+    {
+      "title": "A Day With No Clock",
+      "first_scene": 0
+    },
+    {
+      "title": "Seventeen Hours a Week",
+      "first_scene": 1
+    },
+    {
+      "title": "Farming Changes Everything",
+      "first_scene": 2
+    },
+    {
+      "title": "Rich in Time",
+      "first_scene": 3
+    }
+  ],
+  "scenes": [
+    {
+      "narration": "Imagine a day with no clock and no boss. You wake when the sun warms the cave mouth. Breakfast is whatever was left from last night. And nobody is waiting for you to clock in.",
+      "visual_query": "caveman stretching at a cave",
+      "visual_description": "caveman stretching at a cave entrance at sunrise",
+      "setting": "",
+      "visual_subject": "",
+      "action": "",
+      "visual_objects": [],
+      "on_screen_text": "A DAY WITH NO CLOCK",
+      "beats": [
+        {
+          "text": "Imagine a day with no clock and no boss.",
+          "picture": "Imagine a day with no clock and no boss.",
+          "character": false,
+          "label": "",
+          "card": "A DAY WITH NO CLOCK",
+          "take": 0
+        },
+        {
+          "text": "You wake when the sun warms the cave mouth.",
+          "picture": "caveman stretching at a cave entrance at sunrise",
+          "character": true,
+          "label": "",
+          "card": "",
+          "take": 0
+        },
+        {
+          "text": "Breakfast is whatever was left from last night.",
+          "picture": "caveman holding a half-eaten roasted root by a dead fire",
+          "character": true,
+          "label": "",
+          "card": "",
+          "take": 0
+        },
+        {
+          "text": "And nobody is waiting for you to clock in.",
+          "picture": "an empty savanna path with a single acacia tree",
+          "character": false,
+          "label": "",
+          "card": "",
+          "take": 0
+        }
+      ]
+    },
+    {
+      "narration": "Anthropologists who timed hunter-gatherers found something surprising. Getting food took about seventeen hours a week. The rest of the time went to people.",
+      "visual_query": "a scientist with a notebook",
+      "visual_description": "a scientist with a notebook and stopwatch sitting on a rock",
+      "setting": "",
+      "visual_subject": "",
+      "action": "",
+      "visual_objects": [],
+      "on_screen_text": "",
+      "beats": [
+        {
+          "text": "Anthropologists who timed hunter-gatherers found something surprising.",
+          "picture": "a scientist with a notebook and stopwatch sitting on a rock",
+          "character": false,
+          "label": "",
+          "card": "",
+          "take": 0
+        },
+        {
+          "text": "Getting food took about seventeen hours a week.",
+          "picture": "caveman carrying a basket of berries, a small sun dial beside him",
+          "character": true,
+          "label": "17 HOURS A WEEK",
+          "card": "",
+          "take": 0
+        },
+        {
+          "text": "The rest of the time went to people.",
+          "picture": "a group of cavemen laughing around a campfire",
+          "character": true,
+          "label": "",
+          "card": "",
+          "take": 0
+        }
+      ]
+    },
+    {
+      "narration": "Then came farming. Fields needed weeding, watering and guarding from dawn to dusk. Skeletons from early farms show shorter, sicker people.",
+      "visual_query": "tired caveman with a hoe",
+      "visual_description": "tired caveman with a hoe in a wheat field, sweat drops flying",
+      "setting": "",
+      "visual_subject": "",
+      "action": "",
+      "visual_objects": [],
+      "on_screen_text": "THE WORKLOAD EXPLODES",
+      "beats": [
+        {
+          "text": "Then came farming.",
+          "picture": "Then came farming.",
+          "character": false,
+          "label": "",
+          "card": "THE WORKLOAD EXPLODES",
+          "take": 0
+        },
+        {
+          "text": "Fields needed weeding, watering and guarding from dawn to dusk.",
+          "picture": "tired caveman with a hoe in a wheat field, sweat drops flying",
+          "character": true,
+          "label": "DAWN TO DUSK",
+          "card": "",
+          "take": 0
+        },
+        {
+          "text": "Skeletons from early farms show shorter, sicker people.",
+          "picture": "a row of small skeletons standing side by side",
+          "character": false,
+          "label": "",
+          "card": "",
+          "take": 0
+        }
+      ]
+    },
+    {
+      "narration": "So were our ancestors lazy, or were they rich in time? Tell me in the comments which life you would choose.",
+      "visual_query": "caveman lying in a hammock",
+      "visual_description": "caveman lying in a hammock between two trees, smiling",
+      "setting": "",
+      "visual_subject": "",
+      "action": "",
+      "visual_objects": [],
+      "on_screen_text": "",
+      "beats": [
+        {
+          "text": "So were our ancestors lazy, or were they rich in time?",
+          "picture": "caveman lying in a hammock between two trees, smiling",
+          "character": true,
+          "label": "",
+          "card": "",
+          "take": 0
+        },
+        {
+          "text": "Tell me in the comments which life you would choose.",
+          "picture": "caveman shrugging with a question mark cloud above",
+          "character": true,
+          "label": "",
+          "card": "",
+          "take": 0
+        }
+      ]
+    }
+  ],
+  "claims_to_verify": [
+    "Richard Lee's estimate of about 17 hours a week of food work (1968)",
+    "Skeletal evidence of shorter stature among early farmers (Cohen & Armelagos, 1984)"
+  ]
+}
